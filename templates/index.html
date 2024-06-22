@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ChatGPT App</title>
+</head>
+<body>
+    <h1>Chat with GPT-4</h1>
+    <form id="chat-form">
+        <label for="text">Enter your text:</label>
+        <textarea id="text" name="text" rows="4" cols="50"></textarea>
+        <br>
+        <button type="submit">Send</button>
+    </form>
+    <div id="response"></div>
+
+    <script>
+        document.getElementById('chat-form').addEventListener('submit', async (event) => {
+            event.preventDefault();
+            const text = document.getElementById('text').value;
+            
+            const response = await fetch('/chat', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ text }),
+            });
+
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+
+            document.getElementById('response').innerText = '';
+
+            async function readStream() {
+                const { done, value } = await reader.read();
+                if (done) {
+                    console.log('Stream finished.');
+                    return;
+                }
+                const chunk = decoder.decode(value, { stream: true });
+                document.getElementById('response').innerText += chunk;
+                readStream();
+            }
+
+            readStream();
+        });
+    </script>
+</body>
+</html>
