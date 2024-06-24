@@ -1,4 +1,3 @@
-from pathlib import Path
 from flask import Flask, Response, request, jsonify, render_template
 from dotenv import load_dotenv
 from openai import OpenAI
