@@ -1,3 +1,4 @@
+from pathlib import Path
 from flask import Flask, Response, request, jsonify, render_template
 from dotenv import load_dotenv
 from openai import OpenAI
@@ -16,23 +17,24 @@ def chat():
     data = request.json
     user_input = data.get('text')
 
-    def generate_stream():
-        try:
-            stream = client.chat.completions.create(
-                model="gpt-3.5-turbo",
-                messages=[{"role": "user", "content": user_input}],
-                stream=True,
-            )
-            for chunk in stream:
-              if chunk.choices[0].delta.content is not None:
-                    yield chunk.choices[0].delta.content
-              else:
-                    raise ValueError("An error occurred while generating the response")
-        
-        except Exception as e:
-            yield jsonify({"error": str(e)})
+    try:
+        text_response = client.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=[{"role": "user", "content": user_input}],
+        )
+        text_response = text_response.choices[0].message.content
 
-    return Response(generate_stream())
+        speech_response = client.audio.speech.create(
+            model="tts-1",
+            voice="alloy",
+            input=text_response,
+        )
+        speech_bytes = b''.join(chunk for chunk in speech_response.iter_bytes())
+
+        print("Response: " + text_response)
+        return Response(speech_bytes, mimetype="audio/mpeg")
+    except Exception as e:
+        return jsonify({"message": "An error occurred", "error": str(e)}), 500
 
 if __name__ == '__main__':
     app.run(debug=True)

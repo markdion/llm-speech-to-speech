@@ -28,23 +28,19 @@
                 body: JSON.stringify({ text }),
             });
 
-            const reader = response.body.getReader();
-            const decoder = new TextDecoder();
-
-            document.getElementById('response').innerText = '';
-
-            async function readStream() {
-                const { done, value } = await reader.read();
-                if (done) {
-                    console.log('Stream finished.');
-                    return;
-                }
-                const chunk = decoder.decode(value, { stream: true });
-                document.getElementById('response').innerText += chunk;
-                readStream();
+            if (response.ok) {
+                // Create a blob from the response
+                const blob = await response.blob();
+                // Create a URL from the blob
+                const url = URL.createObjectURL(blob);
+                // Create an audio element and set its source to the blob URL
+                const audio = new Audio(url);
+                // Play the audio
+                audio.play();
+            } else {
+                console.error('Failed to fetch audio');
             }
 
-            readStream();
         });
     </script>
 </body>
