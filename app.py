@@ -1,4 +1,6 @@
-from flask import Flask, Response, request, jsonify, render_template
+import base64
+import io
+from flask import Flask, json, request, jsonify, render_template
 from dotenv import load_dotenv
 from openai import OpenAI
 
@@ -13,27 +15,52 @@ def home():
 
 @app.route('/chat', methods=['POST'])
 def chat():
-    data = request.json
-    user_input = data.get('text')
+    if 'audio' in request.files:
+        audio_file = request.files['audio']
+        conversation_history = request.form['conversationHistory']
 
-    try:
-        text_response = client.chat.completions.create(
-            model="gpt-3.5-turbo",
-            messages=[{"role": "user", "content": user_input}],
-        )
-        text_response = text_response.choices[0].message.content
+        try:
+            conversation_history = json.loads(conversation_history)
 
-        speech_response = client.audio.speech.create(
-            model="tts-1",
-            voice="alloy",
-            input=text_response,
-        )
-        speech_bytes = b''.join(chunk for chunk in speech_response.iter_bytes())
+            audio_bytes = audio_file.read()
 
-        print("Response: " + text_response)
-        return Response(speech_bytes, mimetype="audio/mpeg")
-    except Exception as e:
-        return jsonify({"message": "An error occurred", "error": str(e)}), 500
+            if not audio_file.filename.endswith(('.flac', '.m4a', '.mp3', '.mp4', '.mpeg', '.mpga', '.oga', '.ogg', '.wav', '.webm')):
+                return jsonify({"error": "Invalid file format"}), 400
+            audio_io = io.BytesIO(audio_bytes)
+            audio_io.name = "audio.wav"
+
+            transcription_response = client.audio.transcriptions.create(
+                model="whisper-1",
+                file=audio_io
+            )
+            user_input = transcription_response.text
+            conversation_history.append({"role": "user", "content": user_input})
+
+            text_response = client.chat.completions.create(
+                model="gpt-3.5-turbo",
+                messages=conversation_history,
+            )
+            text_response = text_response.choices[0].message.content
+
+            speech_response = client.audio.speech.create(
+                model="tts-1",
+                voice="alloy",
+                input=text_response,
+            )
+            speech_bytes = b''.join(chunk for chunk in speech_response.iter_bytes())
+
+            conversation_history.append({"role": "assistant", "content": text_response})
+
+            speech_base64 = base64.b64encode(speech_bytes).decode('utf-8')
+
+            print("Response: " + text_response)
+            return jsonify({
+                "conversationHistory": conversation_history,
+                "audioResponse": speech_base64
+            })
+        
+        except Exception as e:
+            return jsonify({"message": "An error occurred", "error": str(e)}), 500
 
 if __name__ == '__main__':
     app.run(debug=True)

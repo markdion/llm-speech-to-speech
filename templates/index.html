@@ -7,40 +7,69 @@
 </head>
 <body>
     <h1>Chat with GPT-4</h1>
-    <form id="chat-form">
-        <label for="text">Enter your text:</label>
-        <textarea id="text" name="text" rows="4" cols="50"></textarea>
-        <br>
-        <button type="submit">Send</button>
-    </form>
-    <div id="response"></div>
+    <button id="record-btn">Start Recording</button>
 
     <script>
-        document.getElementById('chat-form').addEventListener('submit', async (event) => {
-            event.preventDefault();
-            const text = document.getElementById('text').value;
-            
-            const response = await fetch('/chat', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({ text }),
-            });
+        let mediaRecorder;
+        let audioChunks = [];
+        let conversationHistory = localStorage.getItem('conversationHistory');
+        if (conversationHistory) {
+            conversationHistory = JSON.parse(conversationHistory);
+        } else {
+            conversationHistory = [];
+        }
 
-            if (response.ok) {
-                // Create a blob from the response
-                const blob = await response.blob();
-                // Create a URL from the blob
-                const url = URL.createObjectURL(blob);
-                // Create an audio element and set its source to the blob URL
-                const audio = new Audio(url);
-                // Play the audio
-                audio.play();
-            } else {
-                console.error('Failed to fetch audio');
+        document.getElementById('record-btn').addEventListener('click', async () => {
+            if (!mediaRecorder || mediaRecorder.state === "inactive") {
+                audioChunks = [];
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                mediaRecorder = new MediaRecorder(stream);
+                mediaRecorder.ondataavailable = event => {
+                    console.log("Data available: ", event.data.size);
+                    audioChunks.push(event.data);
+                };
+                mediaRecorder.onstop = async () => {
+                    const audioBlob = new Blob(audioChunks, { type: 'audio/wav' });
+                    console.log("Blob size: ", audioBlob.size);
+                    if (audioBlob.size > 0) {
+                        const formData = new FormData();
+                        formData.append("audio", audioBlob, "audio.wav");
+                        formData.append("conversationHistory", JSON.stringify(conversationHistory));
+
+                        const response = await fetch('/chat', {
+                            method: 'POST',
+                            body: formData,
+                        });
+
+                        if (response.ok) {
+                            const responseData = await response.json();
+
+                            conversationHistory = responseData.conversationHistory;
+                            localStorage.setItem('conversationHistory', JSON.stringify(conversationHistory));
+
+                            const audioBytes = atob(responseData.audioResponse);
+                            const audioArray = new Uint8Array(audioBytes.length);
+                            for (let i = 0; i < audioBytes.length; i++) {
+                                audioArray[i] = audioBytes.charCodeAt(i);
+                            }
+                            const audioBlob = new Blob([audioArray], { type: 'audio/wav' });
+                            const url = URL.createObjectURL(audioBlob);
+
+                            const audio = new Audio(url);
+                            audio.play();
+                        } else {
+                            console.error("Failed to fetch audio response");
+                        }
+                    } else {
+                        console.error("No audio recorded");
+                    }
+                };
+                mediaRecorder.start();
+                document.getElementById('record-btn').textContent = 'Recording... Click to stop';
+            } else if (mediaRecorder.state === "recording") {
+                mediaRecorder.stop();
+                document.getElementById('record-btn').textContent = 'Start Recording';
             }
-
         });
     </script>
 </body>
